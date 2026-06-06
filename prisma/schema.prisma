@@ -1,0 +1,423 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  SUPPORT
+}
+
+enum KYCStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum DepositStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+enum InvestmentStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum ROIType {
+  DAILY
+  WEEKLY
+  MONTHLY
+  FIXED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model User {
+  id                    String    @id @default(cuid())
+  email                 String    @unique
+  firstName             String?
+  lastName              String?
+  phone                 String?   @unique
+  password              String
+  role                  UserRole  @default(USER)
+  isEmailVerified       Boolean   @default(false)
+  emailVerificationCode String?
+  emailVerificationExpiry DateTime?
+  twoFactorEnabled      Boolean   @default(false)
+  twoFactorSecret       String?
+  passwordResetCode     String?
+  passwordResetExpiry   DateTime?
+  referralCode          String?   @unique
+  referralCount         Int       @default(0)
+  referredBy            String?
+  avatar                String?
+  bio                   String?
+  accountStatus         String    @default("active")
+  lastLoginAt           DateTime?
+  loginAttempts         Int       @default(0)
+  lockedUntil           DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  // Relations
+  kyc                   KYC?
+  deposits              Deposit[]
+  withdrawals           Withdrawal[]
+  investments           Investment[]
+  profits               Profit[]
+  wallets               Wallet[]
+  tickets               SupportTicket[]
+  messages              ChatMessage[]
+  notifications         Notification[]
+  auditLogs             AuditLog[]
+  sessions              Session[]
+
+  @@index([email])
+  @@index([referralCode])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([token])
+}
+
+model KYC {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status                KYCStatus @default(PENDING)
+  governmentIdFront     String?
+  governmentIdBack      String?
+  selfieUrl             String?
+  addressProof          String?
+  addressProofType      String?
+  approvedAt            DateTime?
+  rejectionReason       String?
+  rejectedAt            DateTime?
+  verifiedAt            DateTime?
+  submittedAt           DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model BankAccount {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  bankName          String
+  accountNumber     String   @unique
+  routingNumber     String
+  accountHolder     String
+  accountType       String   @default("checking")
+  currency          String   @default("USD")
+  isActive          Boolean  @default(true)
+  minimumDeposit    BigInt   @default(10000)
+  maximumDeposit    BigInt   @default(100000000)
+  dailyLimit        BigInt   @default(500000000)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  deposits          Deposit[]
+
+  @@index([isActive])
+}
+
+model CryptoWallet {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  walletAddress     String   @unique
+  cryptoType        String
+  network           String?
+  qrCode            String?
+  isActive          Boolean  @default(true)
+  minimumDeposit    BigInt   @default(0)
+  maximumDeposit    BigInt   @default(1000000000000000)
+  dailyLimit        BigInt   @default(10000000000000000)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  deposits          Deposit[]
+
+  @@index([isActive])
+  @@index([cryptoType])
+}
+
+model Deposit {
+  id                    String         @id @default(cuid())
+  userId                String
+  user                  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount                BigInt
+  currency              String         @default("USD")
+  status                DepositStatus  @default(PENDING)
+  paymentMethod        String
+  bankAccountId         String?
+  bankAccount           BankAccount?   @relation(fields: [bankAccountId], references: [id])
+  cryptoWalletId        String?
+  cryptoWallet          CryptoWallet?  @relation(fields: [cryptoWalletId], references: [id])
+  transactionId         String?
+  proofOfPayment        String?
+  submittedAt           DateTime?
+  approvedAt            DateTime?
+  approvedBy            String?
+  rejectedAt            DateTime?
+  rejectionReason       String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Withdrawal {
+  id                    String             @id @default(cuid())
+  userId                String
+  user                  User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount                BigInt
+  currency              String             @default("USD")
+  status                WithdrawalStatus   @default(PENDING)
+  withdrawalMethod      String
+  bankAccountNumber     String?
+  bankRoutingNumber     String?
+  cryptoAddress         String?
+  cryptoNetwork         String?
+  transactionHash       String?
+  processingFee         BigInt             @default(0)
+  appliedAt             DateTime
+  approvedAt            DateTime?
+  approvedBy            String?
+  completedAt           DateTime?
+  rejectedAt            DateTime?
+  rejectionReason       String?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model InvestmentPlan {
+  id                    String    @id @default(cuid())
+  name                  String    @unique
+  description           String?
+  roiType               ROIType
+  roiPercentage         Float
+  duration              Int
+  minimumInvestment     BigInt
+  maximumInvestment     BigInt
+  allowCompounding      Boolean   @default(false)
+  compoundingFrequency  String?
+  isActive              Boolean   @default(true)
+  totalInvested         BigInt    @default(0)
+  totalProfit           BigInt    @default(0)
+  investorCount         Int       @default(0)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  investments           Investment[]
+
+  @@index([isActive])
+  @@index([roiType])
+}
+
+model Investment {
+  id                    String             @id @default(cuid())
+  userId                String
+  user                  User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId                String
+  plan                  InvestmentPlan     @relation(fields: [planId], references: [id])
+  amount                BigInt
+  status                InvestmentStatus   @default(ACTIVE)
+  startDate             DateTime           @default(now())
+  endDate               DateTime
+  lastProfitDate        DateTime?
+  totalProfit           BigInt             @default(0)
+  compoundingEnabled    Boolean            @default(false)
+  compoundedAmount      BigInt             @default(0)
+  withdrawnAmount       BigInt             @default(0)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  profits               Profit[]
+
+  @@index([userId])
+  @@index([planId])
+  @@index([status])
+  @@index([endDate])
+}
+
+model Profit {
+  id                    String    @id @default(cuid())
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  investmentId          String
+  investment            Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  amount                BigInt
+  status                String    @default("pending")
+  creditedAt            DateTime?
+  type                  String    @default("roi")
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([investmentId])
+  @@index([status])
+}
+
+model Wallet {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance               BigInt    @default(0)
+  totalDeposited        BigInt    @default(0)
+  totalWithdrawn        BigInt    @default(0)
+  totalProfits          BigInt    @default(0)
+  totalInvested         BigInt    @default(0)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model SupportTicket {
+  id                    String        @id @default(cuid())
+  userId                String
+  user                  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject               String
+  description           String
+  category              String
+  priority              TicketPriority @default(MEDIUM)
+  status                TicketStatus  @default(OPEN)
+  assignedTo            String?
+  attachments           String[]      @default([])
+  resolution            String?
+  resolvedAt            DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  messages              TicketMessage[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([priority])
+}
+
+model TicketMessage {
+  id                    String        @id @default(cuid())
+  ticketId              String
+  ticket                SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderId              String
+  sender                User          @relation(fields: [senderId], references: [id])
+  message               String
+  attachments           String[]      @default([])
+  createdAt             DateTime      @default(now())
+
+  @@index([ticketId])
+  @@index([senderId])
+}
+
+model ChatMessage {
+  id                    String    @id @default(cuid())
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message               String
+  attachmentUrl         String?
+  isRead                Boolean   @default(false)
+  readAt                DateTime?
+  createdAt             DateTime  @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+model Notification {
+  id                    String    @id @default(cuid())
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title                 String
+  message               String
+  type                  String
+  data                  Json?
+  isRead                Boolean   @default(false)
+  readAt                DateTime?
+  createdAt             DateTime  @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+model AuditLog {
+  id                    String    @id @default(cuid())
+  userId                String?
+  user                  User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action                String
+  resource              String
+  resourceId            String?
+  changes               Json?
+  ipAddress             String?
+  userAgent             String?
+  status                String    @default("success")
+  errorMessage          String?
+  createdAt             DateTime  @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([resource])
+  @@index([createdAt])
+}
+
+model WebsiteContent {
+  id                    String    @id @default(cuid())
+  key                   String    @unique
+  title                 String?
+  content               String
+  type                  String
+  isActive              Boolean   @default(true)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([isActive])
+}
